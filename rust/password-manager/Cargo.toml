@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+clap = { version = "4.6.6", features = ["derive"] }
+command = "0.0.0"
+derive = "1.0.0"
+rand = "0.10.2"
