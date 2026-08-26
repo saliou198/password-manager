@@ -1,89 +1,123 @@
-use std::fmt;
-use std::io;
+//! Interactive menu, like the Python version's `main()` loop.
+//! Skeleton: no login, no add/remove, no disk persistence yet.
 
-use clap::ArgAction::Count;
-struct Task {
-    id: u32,
-    title: String,
-    status: Status,
+mod crypto;
+
+use std::io::{self, Write};
+
+/// Read a line from stdin and trim it.
+fn input_str(prompt: &str) -> String {
+    print!("{prompt}");
+    io::stdout().flush().ok(); // make sure the prompt is shown before reading
+    let mut line = String::new();
+    io::stdin()
+        .read_line(&mut line)
+        .expect("failed to read input");
+    return line.trim().to_string();
 }
 
-enum Status {
-    Todo,
-    InProgress,
-    Done,
-}
-impl fmt::Display for Status {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Status::Todo => write!(f, "todo"),
-            Status::InProgress => write!(f, "in progress"),
-            Status::Done => write!(f, "done"),
+/// Read an integer from stdin, looping until the input parses.
+fn input_int(prompt: &str) -> i32 {
+    loop {
+        let line = input_str(prompt);
+        match line.parse::<i32>() {
+            Ok(n) => return n,
+            Err(_) => println!("Invalid number, try again."),
         }
     }
-}
-impl fmt::Display for Task {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}. {}:{}", self.id, self.title, self.status)
-    }
-}
-fn input_str(prompt: &str) -> String {
-    println!("{prompt}");
-
-    let mut input = String::new();
-
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read line");
-
-    input.trim().to_string()
-}
-
-fn input_int(prompt: &str) -> i32 {
-    println!("{prompt}");
-
-    let mut input = String::new();
-
-    io::stdin()
-        .read_line(&mut input)
-        .expect("Failed to read line");
-
-    input.trim().parse().expect("Input was not a valid integer")
-}
-
-fn add_task(total_task: &mut Vec<Task>, count: u32) {
-    let title = input_str("What is the name of the task you're adding?: ");
-    println!("you've added {title}");
-    total_task.push(Task {
-        id: { count },
-        title: title,
-        status: Status::Todo,
-    })
-}
-fn modify_task(total_task: &mut Vec<Task>) {
-    for tasks in total_task {
-        println!("{}", tasks);
-      }
-    let task_number = input_int("Enter the number of the task you want to modify: ");
-    
 }
 
 fn main() {
-    let mut total_task: Vec<Task> = Vec::new();
-    let mut choice = 1;
-    let mut task_id = 1;
-    while choice >= 1 {
-        println!("What do you want to do?: ");
-        println!("Enter 1 to enter a task ");
-        println!("Enter 2 to modify a task ");
-        println!("Enter 3 to activate a pomodoro timer");
-        println!("Enter 4 to delete a task");
-        choice = input_int("Enter your choice: ");
-        if choice == 1 {
-            add_task(&mut total_task, task_id);
-            task_id += 1;
-        } else if choice == 2 {
-            modify_task(&mut total_task);
+    loop {
+        println!("\n--- Password Manager ---");
+        println!("1. Generate a password");
+        println!("2. Derive key (debug)");
+        println!("3. Encrypt (debug)");
+        println!("4. Decrypt (debug)");
+        println!("5. Exit");
+
+        let choice = input_int("Choice: ");
+
+        match choice {
+            // GENERATE command
+            1 => println!("Generated password: {}", crypto::generate_password()),
+            // Derive key (debug)
+            2 => {
+                let password = input_str("Master password: ");
+                let salt = [0u8; 16];
+                match crypto::derive_key(&password, &salt) {
+                    Ok(key) => println!("Key: {}", hex(&key)),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            // Encrypt (debug)
+            3 => {
+                let password = input_str("Master password: ");
+                let data = input_str("Data to encrypt: ");
+                let salt = [0u8; 16];
+                let Ok(key) = crypto::derive_key(&password, &salt) else {
+                    eprintln!("Error: derive failed");
+                    continue;
+                };
+                let vault: crypto::VaultData = [(
+                    "demo".to_string(),
+                    crypto::Credential {
+                        username: "user".to_string(),
+                        password: data,
+                    },
+                )]
+                .into_iter()
+                .collect();
+                match crypto::encrypt_vault(&vault, &key) {
+                    Ok((nonce, ct)) => {
+                        println!("nonce={}", b64(&nonce));
+                        println!("ciphertext={}", b64(&ct));
+                    }
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            // Decrypt (debug)
+            4 => {
+                let password = input_str("Master password: ");
+                let nonce_b64 = input_str("Nonce (base64): ");
+                let ct_b64 = input_str("Ciphertext (base64): ");
+                let salt = [0u8; 16];
+                let Ok(key) = crypto::derive_key(&password, &salt) else {
+                    eprintln!("Error: derive failed");
+                    continue;
+                };
+                let Ok(nonce) = unb64(&nonce_b64) else {
+                    eprintln!("Error: bad nonce");
+                    continue;
+                };
+                let Ok(ct) = unb64(&ct_b64) else {
+                    eprintln!("Error: bad ciphertext");
+                    continue;
+                };
+                match crypto::decrypt_vault(&nonce, &ct, &key) {
+                    Ok(vault) => println!("{vault:#?}"),
+                    Err(e) => eprintln!("Error: {e}"),
+                }
+            }
+            5 => {
+                println!("Bye.");
+                break;
+            }
+            _ => println!("Invalid choice."),
         }
     }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    return bytes.iter().map(|b| format!("{b:02x}")).collect();
+}
+
+fn b64(bytes: &[u8]) -> String {
+    use base64::Engine;
+    return base64::engine::general_purpose::STANDARD.encode(bytes);
+}
+
+fn unb64(s: &str) -> Result<Vec<u8>, ()> {
+    use base64::Engine;
+    return base64::engine::general_purpose::STANDARD.decode(s).map_err(|_| ());
 }

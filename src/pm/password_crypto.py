@@ -8,7 +8,6 @@ from cryptography.exceptions import InvalidTag
 from getpass import getpass
 import secrets
 import pyperclip
-
 from .storage import StorageBackend
 
 # ---------- Argon2id: master password -> AES-256 key ----------

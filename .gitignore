@@ -222,3 +222,4 @@ __marimo__/
 .streamlit/secrets.toml
 .commandcode/taste/security/taste.md
 .commandcode/settings.json
+.commandcode/taste/workflow/taste.md
